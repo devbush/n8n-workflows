@@ -1,0 +1,1003 @@
+{
+  "name": "Grant a Discord role to verified buyers with Discord OAuth2",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Grant a Discord role to verified buyers\nThe buyer clicks the personal link from the welcome email, logs in with Discord, and the bot adds them to the server with the Supporter role.\n\n### How it works\n1. **Claim link clicked**: the token is hashed and looked up. A valid link redirects to Discord login (`identify` + `guilds.join`), with the token as `state`.\n2. **Discord callback**: the code is exchanged for a token and the Discord profile is read.\n3. The buyer row is linked to that Discord account. A second account cannot reuse the same link; the same account can retry safely.\n4. The bot adds the user to the server with the role (works even if they never joined), then grants the role again in case they were already a member.\n5. The buyer lands in the Supporters channel. If Discord refuses, they see a friendly page and the error workflow alerts you.\n\n### Setup\n- Discord app: add the callback URL as an OAuth2 redirect; invite the bot with Create Invite + Manage Roles, above the Supporter role.\n- Credentials: Postgres, Basic Auth (client ID / client secret), Discord Bot.\n- Fill in **Config**.",
+        "height": 760,
+        "width": 460,
+        "color": 1
+      },
+      "id": "76b42137-9753-49ce-8dc0-9ced99e5e00d",
+      "name": "Overview",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -560,
+        -120
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "supporter/claim",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "301f38f7-299d-44e6-8c34-97a7359f933c",
+      "name": "Claim link clicked",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.2,
+      "position": [
+        0,
+        160
+      ],
+      "webhookId": "17bf80e3-1ee0-4cf2-8e97-5cc1f091598e"
+    },
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "supporter/callback",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "a46c37a4-2c76-4a7f-8a62-94dfb86f5937",
+      "name": "Discord callback",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.2,
+      "position": [
+        0,
+        420
+      ],
+      "webhookId": "7c8648f0-af2b-4685-8f3d-c33177fad55b"
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "30d047cf-1e6c-45c8-829d-81cda1c1019c",
+              "name": "claimUrl",
+              "value": "https://n8n.laforet.dev/webhook/supporter/claim",
+              "type": "string"
+            },
+            {
+              "id": "2c114cde-2e1e-457b-89a5-7038865e9def",
+              "name": "callbackUrl",
+              "value": "https://n8n.laforet.dev/webhook/supporter/callback",
+              "type": "string"
+            },
+            {
+              "id": "b72ec057-862b-4981-889f-0a3020358db7",
+              "name": "discordClientId",
+              "value": "REPLACE_WITH_DISCORD_APPLICATION_ID",
+              "type": "string"
+            },
+            {
+              "id": "5421ded7-0960-47cb-8e48-4eab7b449653",
+              "name": "discordGuildId",
+              "value": "REPLACE_WITH_DISCORD_SERVER_ID",
+              "type": "string"
+            },
+            {
+              "id": "97970ee9-d437-455e-8726-7b28ad9b51fd",
+              "name": "supporterRoleId",
+              "value": "REPLACE_WITH_SUPPORTER_ROLE_ID",
+              "type": "string"
+            },
+            {
+              "id": "2c522b57-2b74-4583-84b6-89253db8aef7",
+              "name": "welcomeChannelId",
+              "value": "REPLACE_WITH_SUPPORTERS_CHANNEL_ID",
+              "type": "string"
+            },
+            {
+              "id": "f658e438-7ad7-4299-82e2-e67c6d7932f5",
+              "name": "alertChannelId",
+              "value": "REPLACE_WITH_PRIVATE_ALERTS_CHANNEL_ID",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": false,
+        "options": {}
+      },
+      "id": "544dc566-e6ad-4848-87d2-75b4ef41eede",
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        220,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 4
+          },
+          "conditions": [
+            {
+              "id": "68a683bf-696c-4f9c-8aea-dfde14beede3",
+              "leftValue": "={{ $('Discord callback').isExecuted }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": false,
+        "options": {}
+      },
+      "id": "4a320025-c860-4f0b-8ec1-770a1b57c050",
+      "name": "Back from Discord?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.4,
+      "position": [
+        440,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "content": "### Step 1: claim link\nValidate the token from the email, then send the buyer to Discord login.",
+        "height": 340,
+        "width": 700,
+        "color": 7
+      },
+      "id": "e7a5f247-d51d-423a-825b-a332785ccf48",
+      "name": "Note 2",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        660,
+        -100
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id FROM buyers\nWHERE claim_token_hash = encode(sha256(convert_to($1, 'UTF8')), 'hex')\n  AND status = 'paid';",
+        "options": {
+          "queryReplacement": "={{ [ $('Claim link clicked').first().json.query.t ?? '' ] }}"
+        }
+      },
+      "id": "b0220b98-1e36-4b6d-8e35-825ba5a11e5b",
+      "name": "Find buyer by link",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        700,
+        40
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 4
+          },
+          "conditions": [
+            {
+              "id": "79c0cb8c-281f-48e6-8a80-d947ac89f9c0",
+              "leftValue": "={{ $json.id != null }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": false,
+        "options": {}
+      },
+      "id": "2398c9cb-be14-4a69-8c42-5925ac8c9089",
+      "name": "Link valid?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.4,
+      "position": [
+        920,
+        40
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "redirect",
+        "redirectURL": "=https://discord.com/oauth2/authorize?response_type=code&client_id={{ $('Config').first().json.discordClientId }}&scope=identify%20guilds.join&redirect_uri={{ encodeURIComponent($('Config').first().json.callbackUrl) }}&state={{ encodeURIComponent($('Claim link clicked').first().json.query.t) }}",
+        "options": {
+          "responseCode": 302
+        }
+      },
+      "id": "010bbbd7-6dcf-4feb-80de-7de3caf16022",
+      "name": "Send to Discord login",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1140,
+        -40
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "=<!doctype html><html lang=\"fr\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Lien invalide</title><style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#0b0f0e;color:#e7ece9;font:16px/1.6 system-ui,sans-serif}main{max-width:440px;padding:32px;text-align:center}h1{font-size:22px;margin:0 0 12px}p{margin:0;color:#a3b0aa}a{color:#10b981}</style></head><body><main><h1>Lien invalide</h1><p>Ce lien n'est pas valide ou a été remplacé par un plus récent. Utilise le dernier email reçu, ou réponds-y si tu bloques.</p></main></body></html>",
+        "options": {
+          "responseCode": 404,
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "text/html; charset=utf-8"
+              }
+            ]
+          }
+        }
+      },
+      "id": "d1ea337f-b525-4255-8b86-9f2cfbc0390e",
+      "name": "Show invalid link page",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1140,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "content": "### Step 2: back from Discord\nExchange the code, read the profile, link the buyer to that Discord account, then add them to the server with the role.",
+        "height": 620,
+        "width": 2420,
+        "color": 7
+      },
+      "id": "64e9745d-c63e-4c97-8981-ef11cfc7273b",
+      "name": "Note 3",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        660,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 4
+          },
+          "conditions": [
+            {
+              "id": "1eccc5ec-6e6f-4522-8f00-977c41b73e5f",
+              "leftValue": "={{ !!$('Discord callback').first().json.query.error || !$('Discord callback').first().json.query.code }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": false,
+        "options": {}
+      },
+      "id": "fb0ed3d9-5549-4845-8f58-959008bc87f9",
+      "name": "Login cancelled?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.4,
+      "position": [
+        700,
+        440
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "=<!doctype html><html lang=\"fr\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Connexion annulée</title><style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#0b0f0e;color:#e7ece9;font:16px/1.6 system-ui,sans-serif}main{max-width:440px;padding:32px;text-align:center}h1{font-size:22px;margin:0 0 12px}p{margin:0;color:#a3b0aa}a{color:#10b981}</style></head><body><main><h1>Connexion annulée</h1><p>La connexion à Discord a été annulée. <a href=\"{{ $('Config').first().json.claimUrl }}?t={{ encodeURIComponent($('Discord callback').first().json.query.state ?? '') }}\">Réessayer</a></p></main></body></html>",
+        "options": {
+          "responseCode": 200,
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "text/html; charset=utf-8"
+              }
+            ]
+          }
+        }
+      },
+      "id": "474f1e3a-16e3-49ea-8e35-08aa44bb6462",
+      "name": "Show cancelled page",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        920,
+        760
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id FROM buyers\nWHERE claim_token_hash = encode(sha256(convert_to($1, 'UTF8')), 'hex')\n  AND status = 'paid';",
+        "options": {
+          "queryReplacement": "={{ [ $('Discord callback').first().json.query.state ?? '' ] }}"
+        }
+      },
+      "id": "85b836a9-aa5e-4f39-8427-3aa32223303d",
+      "name": "Find buyer by state",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        920,
+        420
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 4
+          },
+          "conditions": [
+            {
+              "id": "79c0cb8c-281f-48e6-8a80-d947ac89f9c0",
+              "leftValue": "={{ $json.id != null }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": false,
+        "options": {}
+      },
+      "id": "b9bd3eb1-6aae-4edd-860e-da35a150592b",
+      "name": "State valid?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.4,
+      "position": [
+        1140,
+        420
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "=<!doctype html><html lang=\"fr\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Lien invalide</title><style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#0b0f0e;color:#e7ece9;font:16px/1.6 system-ui,sans-serif}main{max-width:440px;padding:32px;text-align:center}h1{font-size:22px;margin:0 0 12px}p{margin:0;color:#a3b0aa}a{color:#10b981}</style></head><body><main><h1>Lien invalide</h1><p>Ce lien n'est pas valide ou a été remplacé par un plus récent. Utilise le dernier email reçu, ou réponds-y si tu bloques.</p></main></body></html>",
+        "options": {
+          "responseCode": 404,
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "text/html; charset=utf-8"
+              }
+            ]
+          }
+        }
+      },
+      "id": "232f9b15-6a0a-40b2-8f63-75d8546a0bf9",
+      "name": "Show invalid link page (callback)",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1360,
+        760
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://discord.com/api/v10/oauth2/token",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "DiscordBot (https://laforet.dev, 1.0)"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "form-urlencoded",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "grant_type",
+              "value": "authorization_code"
+            },
+            {
+              "name": "code",
+              "value": "={{ $('Discord callback').first().json.query.code }}"
+            },
+            {
+              "name": "redirect_uri",
+              "value": "={{ $('Config').first().json.callbackUrl }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "5ef2c109-cf7b-495c-8b57-d1e0b9054bb0",
+      "name": "Exchange code for token",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        1360,
+        400
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "=<!doctype html><html lang=\"fr\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Session expirée</title><style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#0b0f0e;color:#e7ece9;font:16px/1.6 system-ui,sans-serif}main{max-width:440px;padding:32px;text-align:center}h1{font-size:22px;margin:0 0 12px}p{margin:0;color:#a3b0aa}a{color:#10b981}</style></head><body><main><h1>Session expirée</h1><p>La connexion à Discord a expiré. <a href=\"{{ $('Config').first().json.claimUrl }}?t={{ encodeURIComponent($('Discord callback').first().json.query.state ?? '') }}\">Réessayer</a></p></main></body></html>",
+        "options": {
+          "responseCode": 400,
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "text/html; charset=utf-8"
+              }
+            ]
+          }
+        }
+      },
+      "id": "78ac3fa4-ffba-4f73-8d5d-39892a78d933",
+      "name": "Show expired page",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1580,
+        760
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://discord.com/api/v10/users/@me",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $json.access_token }}"
+            },
+            {
+              "name": "User-Agent",
+              "value": "DiscordBot (https://laforet.dev, 1.0)"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "ff90ba31-be80-459d-82e9-cd8d90d45583",
+      "name": "Get Discord profile",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        1580,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE buyers\nSET discord_user_id = $2, discord_username = $3,\n    claimed_at = COALESCE(claimed_at, now()), updated_at = now()\nWHERE id = $1 AND status = 'paid'\n  AND (discord_user_id IS NULL OR discord_user_id = $2)\nRETURNING id;",
+        "options": {
+          "queryReplacement": "={{ [ $('Find buyer by state').first().json.id, $json.id, $json.username ?? '' ] }}"
+        }
+      },
+      "id": "57860583-fb39-4a78-837a-724bf4a29115",
+      "name": "Link Discord account",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        1800,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 4
+          },
+          "conditions": [
+            {
+              "id": "79c0cb8c-281f-48e6-8a80-d947ac89f9c0",
+              "leftValue": "={{ $json.id != null }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": false,
+        "options": {}
+      },
+      "id": "98da0207-6e1d-41d6-8e0d-ab60f6afe3c1",
+      "name": "Linked to this account?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.4,
+      "position": [
+        2020,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "=<!doctype html><html lang=\"fr\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Lien déjà utilisé</title><style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#0b0f0e;color:#e7ece9;font:16px/1.6 system-ui,sans-serif}main{max-width:440px;padding:32px;text-align:center}h1{font-size:22px;margin:0 0 12px}p{margin:0;color:#a3b0aa}a{color:#10b981}</style></head><body><main><h1>Lien déjà utilisé</h1><p>Ce lien est déjà relié à un autre compte Discord. Si c'est une erreur, réponds à l'email de bienvenue.</p></main></body></html>",
+        "options": {
+          "responseCode": 409,
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "text/html; charset=utf-8"
+              }
+            ]
+          }
+        }
+      },
+      "id": "2f4975db-21b9-4f9f-8549-a6d63fc988eb",
+      "name": "Show already linked page",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        2240,
+        760
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "=https://discord.com/api/v10/guilds/{{ $('Config').first().json.discordGuildId }}/members/{{ $('Get Discord profile').first().json.id }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "discordBotApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "DiscordBot (https://laforet.dev, 1.0)"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ access_token: $('Exchange code for token').first().json.access_token, roles: [$('Config').first().json.supporterRoleId] }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true
+            }
+          }
+        }
+      },
+      "id": "c851a8ec-ce4b-422a-89ac-4497a9723cc0",
+      "name": "Add to Discord server",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        2240,
+        380
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "=https://discord.com/api/v10/guilds/{{ $('Config').first().json.discordGuildId }}/members/{{ $('Get Discord profile').first().json.id }}/roles/{{ $('Config').first().json.supporterRoleId }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "discordBotApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Audit-Log-Reason",
+              "value": "Verified%20buyer"
+            },
+            {
+              "name": "User-Agent",
+              "value": "DiscordBot (https://laforet.dev, 1.0)"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true
+            }
+          }
+        }
+      },
+      "id": "5d38c9b8-9121-455d-826b-51d5681748a9",
+      "name": "Grant Supporter role",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        2460,
+        380
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "respondWith": "redirect",
+        "redirectURL": "=https://discord.com/channels/{{ $('Config').first().json.discordGuildId }}/{{ $('Config').first().json.welcomeChannelId }}",
+        "options": {
+          "responseCode": 302
+        }
+      },
+      "id": "ff1640ea-f3ec-4404-88db-d3c2436c79be",
+      "name": "Open the Supporters channel",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        2680,
+        360
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "botToken",
+        "resource": "message",
+        "operation": "send",
+        "guildId": {
+          "__rl": true,
+          "value": "={{ $('Config').first().json.discordGuildId }}",
+          "mode": "id"
+        },
+        "sendTo": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "={{ $('Config').first().json.alertChannelId }}",
+          "mode": "id"
+        },
+        "content": "=Accès Supporter activé pour {{ $('Get Discord profile').first().json.username }} (acheteur #{{ $('Find buyer by state').first().json.id }}).",
+        "options": {}
+      },
+      "id": "d5e3a365-968a-40ca-8f23-a16d55ea476d",
+      "name": "Notify access granted",
+      "type": "n8n-nodes-base.discord",
+      "typeVersion": 2,
+      "position": [
+        2900,
+        360
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "=<!doctype html><html lang=\"fr\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Accès pas encore activé</title><style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#0b0f0e;color:#e7ece9;font:16px/1.6 system-ui,sans-serif}main{max-width:440px;padding:32px;text-align:center}h1{font-size:22px;margin:0 0 12px}p{margin:0;color:#a3b0aa}a{color:#10b981}</style></head><body><main><h1>Accès pas encore activé</h1><p>Je n'ai pas pu activer ton accès automatiquement. J'ai été prévenu et je m'en occupe, tu n'as rien à faire.</p></main></body></html>",
+        "options": {
+          "responseCode": 502,
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "text/html; charset=utf-8"
+              }
+            ]
+          }
+        }
+      },
+      "id": "f27a1845-7b42-43cb-8950-63188d77e9ad",
+      "name": "Show error page",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        2680,
+        600
+      ]
+    },
+    {
+      "parameters": {
+        "errorType": "errorMessage",
+        "errorMessage": "=Discord access grant failed for buyer #{{ $('Find buyer by state').first().json.id }}: {{ $json.error?.message ?? JSON.stringify($json) }}"
+      },
+      "id": "c4391b7f-7c86-43a1-8225-9b0f5177fb56",
+      "name": "Stop: Discord refused",
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [
+        2900,
+        600
+      ]
+    }
+  ],
+  "connections": {
+    "Claim link clicked": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Discord callback": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Back from Discord?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Back from Discord?": {
+      "main": [
+        [
+          {
+            "node": "Login cancelled?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Find buyer by link",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find buyer by link": {
+      "main": [
+        [
+          {
+            "node": "Link valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Link valid?": {
+      "main": [
+        [
+          {
+            "node": "Send to Discord login",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Show invalid link page",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Login cancelled?": {
+      "main": [
+        [
+          {
+            "node": "Show cancelled page",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Find buyer by state",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find buyer by state": {
+      "main": [
+        [
+          {
+            "node": "State valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "State valid?": {
+      "main": [
+        [
+          {
+            "node": "Exchange code for token",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Show invalid link page (callback)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Exchange code for token": {
+      "main": [
+        [
+          {
+            "node": "Get Discord profile",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Show expired page",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Discord profile": {
+      "main": [
+        [
+          {
+            "node": "Link Discord account",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Link Discord account": {
+      "main": [
+        [
+          {
+            "node": "Linked to this account?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Linked to this account?": {
+      "main": [
+        [
+          {
+            "node": "Add to Discord server",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Show already linked page",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Add to Discord server": {
+      "main": [
+        [
+          {
+            "node": "Grant Supporter role",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Show error page",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Grant Supporter role": {
+      "main": [
+        [
+          {
+            "node": "Open the Supporters channel",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Show error page",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Open the Supporters channel": {
+      "main": [
+        [
+          {
+            "node": "Notify access granted",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Show error page": {
+      "main": [
+        [
+          {
+            "node": "Stop: Discord refused",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Paris"
+  },
+  "pinData": {},
+  "active": false,
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": []
+}

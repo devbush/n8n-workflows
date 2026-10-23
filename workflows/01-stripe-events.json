@@ -1,0 +1,1137 @@
+{
+  "name": "Onboard Stripe buyers into a Discord role with Postgres and Resend",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Onboard Stripe buyers into a Discord role\nGives everyone who buys a digital product a personal link to a buyers-only Discord role, and takes the role back on refund or dispute. Works with **Discord access claim**, **Remind buyers to claim Discord access** and **Error alerts**.\n\n### How it works\n1. Stripe sends `payment_intent.succeeded`. The trigger checks the Stripe signature.\n2. Only payments whose `metadata.productSlug` matches **Config** continue.\n3. The checkout session gives the buyer's email and name.\n4. The buyer is saved in Postgres. A unique key on the payment intent makes Stripe's retries harmless. A one-time claim token is created; only its SHA-256 is stored.\n5. Resend sends a welcome email with the personal claim link. An idempotency key blocks duplicate emails.\n6. A private Discord channel gets a sale alert.\n\nA full refund or a dispute marks the buyer and removes the Discord role.\n\n### Setup\n- Run **Setup: create the buyers table** once.\n- Credentials: Stripe (restricted key: Webhook Endpoints write, Checkout Sessions read), Postgres (`onboarding` database), Resend as Header Auth (`Authorization` = `Bearer re_...`), Discord Bot.\n- Fill in **Config**.\n- In workflow settings, set **Error alerts** as the error workflow.",
+        "height": 760,
+        "width": 460,
+        "color": 1
+      },
+      "id": "55166750-b58b-4e73-83dd-618a6f6fa683",
+      "name": "Overview",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -560,
+        -120
+      ]
+    },
+    {
+      "parameters": {
+        "events": [
+          "payment_intent.succeeded",
+          "charge.refunded",
+          "charge.dispute.created"
+        ]
+      },
+      "id": "52a2a9d0-a177-4ed7-8a7a-fa7149e8487a",
+      "name": "Stripe events",
+      "type": "n8n-nodes-base.stripeTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "11c16259-53ab-4478-8adc-09700a503f46",
+              "name": "productSlug",
+              "value": "ai-mvp-guide",
+              "type": "string"
+            },
+            {
+              "id": "571f77ba-6e87-4303-8cc3-87456c0b4249",
+              "name": "productName",
+              "value": "Guide AI MVP",
+              "type": "string"
+            },
+            {
+              "id": "30d047cf-1e6c-45c8-829d-81cda1c1019c",
+              "name": "claimUrl",
+              "value": "https://n8n.laforet.dev/webhook/supporter/claim",
+              "type": "string"
+            },
+            {
+              "id": "7604a327-5329-47a0-8370-f8144a8adb1b",
+              "name": "fromEmail",
+              "value": "Nicolas Laforet <noreply@send.laforet.dev>",
+              "type": "string"
+            },
+            {
+              "id": "d028dbb8-a467-4cf9-813a-75392a6da20a",
+              "name": "replyTo",
+              "value": "REPLACE_WITH_YOUR_REPLY_TO_EMAIL",
+              "type": "string"
+            },
+            {
+              "id": "0aacfb74-a5e4-4ac3-8a6f-50d76509c13c",
+              "name": "senderName",
+              "value": "Nicolas",
+              "type": "string"
+            },
+            {
+              "id": "5421ded7-0960-47cb-8e48-4eab7b449653",
+              "name": "discordGuildId",
+              "value": "REPLACE_WITH_DISCORD_SERVER_ID",
+              "type": "string"
+            },
+            {
+              "id": "97970ee9-d437-455e-8726-7b28ad9b51fd",
+              "name": "supporterRoleId",
+              "value": "REPLACE_WITH_SUPPORTER_ROLE_ID",
+              "type": "string"
+            },
+            {
+              "id": "f658e438-7ad7-4299-82e2-e67c6d7932f5",
+              "name": "alertChannelId",
+              "value": "REPLACE_WITH_PRIVATE_ALERTS_CHANNEL_ID",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": false,
+        "options": {}
+      },
+      "id": "1167d73a-400c-4d32-892c-0a3e7ed2728a",
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        220,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 4
+                },
+                "conditions": [
+                  {
+                    "id": "7f047b44-c1f3-4853-878d-cbb13392301a",
+                    "leftValue": "={{ $('Stripe events').first().json.type }}",
+                    "rightValue": "payment_intent.succeeded",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Payment"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 4
+                },
+                "conditions": [
+                  {
+                    "id": "af232c4f-242a-4b32-8561-3f0b712038d7",
+                    "leftValue": "={{ $('Stripe events').first().json.type }}",
+                    "rightValue": "charge.refunded",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Refund"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 4
+                },
+                "conditions": [
+                  {
+                    "id": "a12ae3a1-058f-49b4-8e29-0093c8bf70e8",
+                    "leftValue": "={{ $('Stripe events').first().json.type }}",
+                    "rightValue": "charge.dispute.created",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Dispute"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "88558d0f-af44-4d74-8199-8dc17d700f8f",
+      "name": "Route by event type",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.5,
+      "position": [
+        440,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "content": "### New purchase\nKeep only this product, find the buyer on the checkout session, save them once, then send the welcome email and a sale alert.",
+        "height": 440,
+        "width": 2000,
+        "color": 7
+      },
+      "id": "cd7d1139-b815-4474-83cf-b2c08a0e3bb0",
+      "name": "Note 2",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        660,
+        -60
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 4
+          },
+          "conditions": [
+            {
+              "id": "634dcc37-5a87-4667-8734-39eb2af710ef",
+              "leftValue": "={{ $('Stripe events').first().json.data.object.metadata?.productSlug === $('Config').first().json.productSlug }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": false,
+        "options": {}
+      },
+      "id": "c2f02943-6868-46e7-8e88-ea3fc04741e9",
+      "name": "Is it this product?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.4,
+      "position": [
+        700,
+        100
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "4b674d22-3d14-4499-80f5-bb691f38e4f8",
+      "name": "Other product, ignore",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        920,
+        260
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://api.stripe.com/v1/checkout/sessions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "stripeApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "payment_intent",
+              "value": "={{ $('Stripe events').first().json.data.object.id }}"
+            },
+            {
+              "name": "limit",
+              "value": "1"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "272caaf5-ad47-48af-8012-65591be9f999",
+      "name": "Find checkout session",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        920,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "language": "javaScript",
+        "jsCode": "const event = $('Stripe events').first().json;\nconst paymentIntent = event.data.object;\nconst session = $input.item.json.data?.[0];\nconst name = (session?.customer_details?.name ?? '').trim();\nconst firstName = name.split(/\\s+/)[0].replace(/[^\\p{L}\\p{M}'-]/gu, '');\n\nreturn {\n  json: {\n    eventId: event.id,\n    paymentIntentId: paymentIntent.id,\n    checkoutSessionId: session?.id ?? '',\n    email: (session?.customer_details?.email ?? paymentIntent.metadata?.email ?? '').trim().toLowerCase(),\n    name,\n    greeting: firstName ? `Salut ${firstName},` : 'Salut,',\n    amountCents: paymentIntent.amount_received,\n    currency: paymentIntent.currency,\n  },\n};"
+      },
+      "id": "30a9c934-ff96-474d-8b1f-4b0615baf36a",
+      "name": "Prepare buyer",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1140,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 4
+          },
+          "conditions": [
+            {
+              "id": "4f40bc68-6f62-40fb-88ef-ef9b02f8100b",
+              "leftValue": "={{ $json.email !== '' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": false,
+        "options": {}
+      },
+      "id": "e24ffc64-0d64-449c-88e8-f944bffaac07",
+      "name": "Has an email?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.4,
+      "position": [
+        1360,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "errorType": "errorMessage",
+        "errorMessage": "=No buyer email found for payment {{ $json.paymentIntentId }}"
+      },
+      "id": "4f52bc79-397b-4763-8671-d5cf8bd6d66e",
+      "name": "Stop: no buyer email",
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [
+        1580,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH t AS MATERIALIZED (\n  SELECT replace(gen_random_uuid()::text || gen_random_uuid()::text, '-', '') AS token\n)\nINSERT INTO buyers (stripe_payment_intent_id, stripe_checkout_session_id, stripe_event_id, product_slug, email, name, amount_cents, currency, claim_token_hash)\nSELECT $1, NULLIF($2, ''), $3, $4, $5, NULLIF($6, ''), $7, $8, encode(sha256(convert_to(t.token, 'UTF8')), 'hex')\nFROM t\nON CONFLICT (stripe_payment_intent_id) DO NOTHING\nRETURNING id, (SELECT token FROM t) AS claim_token;",
+        "options": {
+          "queryReplacement": "={{ [ $json.paymentIntentId, $json.checkoutSessionId, $json.eventId, $('Config').first().json.productSlug, $json.email, $json.name, $json.amountCents, $json.currency ] }}"
+        }
+      },
+      "id": "ecae8bd2-93d7-4ad2-8c78-29eb1f224cb7",
+      "name": "Save buyer",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        1580,
+        60
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 4
+          },
+          "conditions": [
+            {
+              "id": "9fa9b2a2-e106-4fe4-88d5-e33b13b5ebcd",
+              "leftValue": "={{ !!$json.claim_token }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": false,
+        "options": {}
+      },
+      "id": "91965a74-6012-4b22-8347-9504e02db010",
+      "name": "First time we see it?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.4,
+      "position": [
+        1800,
+        60
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "132d4d82-2cab-4f4d-8261-da73537aed5b",
+      "name": "Already processed, ignore",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        2020,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "a8688bec-8695-4576-88f3-96e876272b5d",
+              "name": "subject",
+              "value": "Ton accès Supporter sur le Discord",
+              "type": "string"
+            },
+            {
+              "id": "da3919c8-7572-4569-88a5-8376299c6007",
+              "name": "html",
+              "value": "=<div style=\"font-family:system-ui,-apple-system,Segoe UI,sans-serif;max-width:520px;margin:0 auto;padding:24px;color:#111;line-height:1.6\"><p>{{ $('Prepare buyer').first().json.greeting }}</p><p>Merci pour ton achat du <strong>{{ $('Config').first().json.productName }}</strong> !</p><p>Il te donne aussi le rôle <strong>Supporter</strong> sur mon Discord : un espace réservé aux acheteurs pour poser tes questions, montrer ton projet et avancer avec les autres.</p><p style=\"margin:28px 0\"><a href=\"{{ $('Config').first().json.claimUrl }}?t={{ $json.claim_token }}\" style=\"background:#10b981;color:#fff;padding:12px 20px;border-radius:8px;text-decoration:none;font-weight:600\">Rejoindre le Discord</a></p><p style=\"color:#555;font-size:14px\">Ce lien est personnel : il relie ton achat à ton compte Discord, même si tu n'es pas encore sur le serveur.</p><p>Une question ? Réponds simplement à cet email.</p><p>{{ $('Config').first().json.senderName }}</p></div>",
+              "type": "string"
+            },
+            {
+              "id": "d4003d4b-5ec8-4260-8f59-e9934af81933",
+              "name": "text",
+              "value": "={{ $('Prepare buyer').first().json.greeting }}\n\nMerci pour ton achat du {{ $('Config').first().json.productName }} !\n\nIl te donne aussi le rôle Supporter sur mon Discord : un espace réservé aux acheteurs pour poser tes questions, montrer ton projet et avancer avec les autres.\n\nRejoindre le Discord : {{ $('Config').first().json.claimUrl }}?t={{ $json.claim_token }}\n\nCe lien est personnel : il relie ton achat à ton compte Discord, même si tu n'es pas encore sur le serveur.\n\nUne question ? Réponds simplement à cet email.\n\n{{ $('Config').first().json.senderName }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": false,
+        "options": {}
+      },
+      "id": "115ad4b7-26ec-4f15-8f53-16454d377419",
+      "name": "Build welcome email",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        2020,
+        40
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.resend.com/emails",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Idempotency-Key",
+              "value": "=welcome/{{ $('Prepare buyer').first().json.paymentIntentId }}"
+            },
+            {
+              "name": "User-Agent",
+              "value": "laforet-n8n-onboarding/1.0"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ from: $('Config').first().json.fromEmail, to: [$('Prepare buyer').first().json.email], reply_to: $('Config').first().json.replyTo, subject: $json.subject, html: $json.html, text: $json.text, tags: [{ name: 'flow', value: 'supporter_welcome' }] }) }}",
+        "options": {}
+      },
+      "id": "6b8333d1-3ca3-4b69-8e44-1ec75064f077",
+      "name": "Send welcome email",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        2240,
+        40
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "botToken",
+        "resource": "message",
+        "operation": "send",
+        "guildId": {
+          "__rl": true,
+          "value": "={{ $('Config').first().json.discordGuildId }}",
+          "mode": "id"
+        },
+        "sendTo": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "={{ $('Config').first().json.alertChannelId }}",
+          "mode": "id"
+        },
+        "content": "=Nouvel achat : {{ $('Config').first().json.productName }} par {{ $('Prepare buyer').first().json.name || $('Prepare buyer').first().json.email }} ({{ ($('Prepare buyer').first().json.amountCents / 100).toFixed(2) }} {{ $('Prepare buyer').first().json.currency.toUpperCase() }}). Lien Discord envoyé.",
+        "options": {}
+      },
+      "id": "ce958503-0cca-4ae7-8403-787590565f76",
+      "name": "Notify new sale",
+      "type": "n8n-nodes-base.discord",
+      "typeVersion": 2,
+      "position": [
+        2460,
+        40
+      ]
+    },
+    {
+      "parameters": {
+        "content": "### Refund or dispute\nA full refund or any dispute marks the buyer and removes the Discord role. A buyer who already left the server counts as done.",
+        "height": 460,
+        "width": 2000,
+        "color": 7
+      },
+      "id": "edf2dd9b-fc8d-4aeb-8f99-4b4ae2f3753f",
+      "name": "Note 3",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        660,
+        440
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "0c07ecfa-6770-47c0-8746-e521f2060787",
+              "name": "paymentIntentId",
+              "value": "={{ $('Stripe events').first().json.data.object.payment_intent ?? '' }}",
+              "type": "string"
+            },
+            {
+              "id": "317040b7-67c4-4c79-8e92-61376efb968b",
+              "name": "newStatus",
+              "value": "={{ $('Stripe events').first().json.type === 'charge.dispute.created' ? 'disputed' : 'refunded' }}",
+              "type": "string"
+            },
+            {
+              "id": "071c0312-9a45-4bac-8f73-04dd7bba806a",
+              "name": "revokeAccess",
+              "value": "={{ $('Stripe events').first().json.type === 'charge.dispute.created' || $('Stripe events').first().json.data.object.refunded === true }}",
+              "type": "boolean"
+            }
+          ]
+        },
+        "includeOtherFields": false,
+        "options": {}
+      },
+      "id": "ef3b240a-4f63-4307-8266-dd0a78e3cc7b",
+      "name": "Prepare refund",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        700,
+        620
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 4
+          },
+          "conditions": [
+            {
+              "id": "689199a0-1d32-495d-8680-2ddd9d87f8c3",
+              "leftValue": "={{ $json.revokeAccess }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": false,
+        "options": {}
+      },
+      "id": "e746c4e2-6bd6-4265-8679-b9ae41f35d3b",
+      "name": "Full refund or dispute?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.4,
+      "position": [
+        920,
+        620
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "15f3a742-501f-4171-80f4-b6f1d82e41ae",
+      "name": "Partial refund, ignore",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1140,
+        780
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE buyers SET status = $2, updated_at = now()\nWHERE stripe_payment_intent_id = $1 AND status = 'paid'\nRETURNING id, email, discord_user_id;",
+        "options": {
+          "queryReplacement": "={{ [ $json.paymentIntentId, $json.newStatus ] }}"
+        }
+      },
+      "id": "ca3ef6d1-a6ff-4e39-81b4-2a202d1776d4",
+      "name": "Mark buyer refunded",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        1140,
+        600
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 4
+          },
+          "conditions": [
+            {
+              "id": "edf6d626-c507-43db-8b5c-431569ce5f5c",
+              "leftValue": "={{ $json.id != null }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": false,
+        "options": {}
+      },
+      "id": "8e9ea633-4e4e-4e92-82cc-f2c653985721",
+      "name": "Known buyer?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.4,
+      "position": [
+        1360,
+        600
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "518f63ca-a3ed-4622-8d56-b02d25e441d5",
+      "name": "Not a buyer of this product, ignore",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1580,
+        780
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 4
+          },
+          "conditions": [
+            {
+              "id": "bfe4030c-e9b2-4a64-8dcf-0092a231e2fa",
+              "leftValue": "={{ !!$json.discord_user_id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": false,
+        "options": {}
+      },
+      "id": "31b05596-751a-4c17-8d66-ef6a03f37041",
+      "name": "Discord account linked?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.4,
+      "position": [
+        1580,
+        600
+      ]
+    },
+    {
+      "parameters": {
+        "method": "DELETE",
+        "url": "=https://discord.com/api/v10/guilds/{{ $('Config').first().json.discordGuildId }}/members/{{ $json.discord_user_id }}/roles/{{ $('Config').first().json.supporterRoleId }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "discordBotApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Audit-Log-Reason",
+              "value": "Stripe%20refund%20or%20dispute"
+            },
+            {
+              "name": "User-Agent",
+              "value": "DiscordBot (https://laforet.dev, 1.0)"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "6aa6aa94-1b9d-4203-85d1-494601055cce",
+      "name": "Remove Supporter role",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        1800,
+        540
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 4
+          },
+          "conditions": [
+            {
+              "id": "a85e401c-f162-4eef-8cb1-3d04e7b06e3e",
+              "leftValue": "={{ $json.statusCode }}",
+              "rightValue": 204,
+              "operator": {
+                "type": "number",
+                "operation": "equals"
+              }
+            },
+            {
+              "id": "7b50b107-8d34-4949-8336-75645aadc462",
+              "leftValue": "={{ $json.body?.code }}",
+              "rightValue": 10007,
+              "operator": {
+                "type": "number",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "looseTypeValidation": false,
+        "options": {}
+      },
+      "id": "eab4d257-2449-4484-8c3c-d6037eeb8da4",
+      "name": "Role removed?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.4,
+      "position": [
+        2020,
+        540
+      ]
+    },
+    {
+      "parameters": {
+        "errorType": "errorMessage",
+        "errorMessage": "=Discord role removal failed ({{ $json.statusCode }}): {{ JSON.stringify($json.body) }}"
+      },
+      "id": "b14c05f4-8632-43b0-8e8e-61b78844a1bb",
+      "name": "Stop: role removal failed",
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [
+        2240,
+        720
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE buyers SET role_removed_at = now(), updated_at = now() WHERE id = $1;",
+        "options": {
+          "queryReplacement": "={{ [ $('Mark buyer refunded').first().json.id ] }}"
+        }
+      },
+      "id": "feafa5c4-7eb1-4662-8114-3bfc995d3bcf",
+      "name": "Record role removal",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        2240,
+        520
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "botToken",
+        "resource": "message",
+        "operation": "send",
+        "guildId": {
+          "__rl": true,
+          "value": "={{ $('Config').first().json.discordGuildId }}",
+          "mode": "id"
+        },
+        "sendTo": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "={{ $('Config').first().json.alertChannelId }}",
+          "mode": "id"
+        },
+        "content": "={{ $('Prepare refund').first().json.newStatus === 'disputed' ? 'Litige ouvert' : 'Remboursement' }} : {{ $('Mark buyer refunded').first().json.email }}. {{ $('Mark buyer refunded').first().json.discord_user_id ? 'Rôle Supporter retiré.' : 'Aucun compte Discord lié.' }}",
+        "options": {}
+      },
+      "id": "3d2646be-e4ee-4cb6-8a23-90a0b7d47ca2",
+      "name": "Notify refund",
+      "type": "n8n-nodes-base.discord",
+      "typeVersion": 2,
+      "position": [
+        2460,
+        620
+      ]
+    }
+  ],
+  "connections": {
+    "Stripe events": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Route by event type",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by event type": {
+      "main": [
+        [
+          {
+            "node": "Is it this product?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare refund",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare refund",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is it this product?": {
+      "main": [
+        [
+          {
+            "node": "Find checkout session",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Other product, ignore",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find checkout session": {
+      "main": [
+        [
+          {
+            "node": "Prepare buyer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare buyer": {
+      "main": [
+        [
+          {
+            "node": "Has an email?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has an email?": {
+      "main": [
+        [
+          {
+            "node": "Save buyer",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Stop: no buyer email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save buyer": {
+      "main": [
+        [
+          {
+            "node": "First time we see it?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "First time we see it?": {
+      "main": [
+        [
+          {
+            "node": "Build welcome email",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Already processed, ignore",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build welcome email": {
+      "main": [
+        [
+          {
+            "node": "Send welcome email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send welcome email": {
+      "main": [
+        [
+          {
+            "node": "Notify new sale",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare refund": {
+      "main": [
+        [
+          {
+            "node": "Full refund or dispute?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Full refund or dispute?": {
+      "main": [
+        [
+          {
+            "node": "Mark buyer refunded",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Partial refund, ignore",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark buyer refunded": {
+      "main": [
+        [
+          {
+            "node": "Known buyer?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Known buyer?": {
+      "main": [
+        [
+          {
+            "node": "Discord account linked?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Not a buyer of this product, ignore",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Discord account linked?": {
+      "main": [
+        [
+          {
+            "node": "Remove Supporter role",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Notify refund",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Remove Supporter role": {
+      "main": [
+        [
+          {
+            "node": "Role removed?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Role removed?": {
+      "main": [
+        [
+          {
+            "node": "Record role removal",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Stop: role removal failed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Record role removal": {
+      "main": [
+        [
+          {
+            "node": "Notify refund",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Paris"
+  },
+  "pinData": {},
+  "active": false,
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": []
+}

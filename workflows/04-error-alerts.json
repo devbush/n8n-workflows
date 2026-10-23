@@ -1,0 +1,125 @@
+{
+  "name": "Send n8n workflow errors to a private Discord channel",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Error alerts\nPosts every failed run of the onboarding workflows to a private Discord channel, with the failing step, the error and a link to the execution.\n\n### Setup\n- Publish this workflow (n8n 2.x only runs published error workflows).\n- In each other workflow: **Settings > Error workflow > Error alerts**.\n- Credential: Discord Bot. Fill in **Config**.",
+        "height": 340,
+        "width": 460,
+        "color": 1
+      },
+      "id": "5fc4f5c3-12a3-4d00-8470-dcbab6c18961",
+      "name": "Overview",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -560,
+        -120
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "3a9794de-5b27-4c48-8b91-2141d8a5b5af",
+      "name": "Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "5421ded7-0960-47cb-8e48-4eab7b449653",
+              "name": "discordGuildId",
+              "value": "REPLACE_WITH_DISCORD_SERVER_ID",
+              "type": "string"
+            },
+            {
+              "id": "f658e438-7ad7-4299-82e2-e67c6d7932f5",
+              "name": "alertChannelId",
+              "value": "REPLACE_WITH_PRIVATE_ALERTS_CHANNEL_ID",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": false,
+        "options": {}
+      },
+      "id": "e4ae403c-9c7f-46d5-8e8e-09161ec6742a",
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        220,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "botToken",
+        "resource": "message",
+        "operation": "send",
+        "guildId": {
+          "__rl": true,
+          "value": "={{ $json.discordGuildId }}",
+          "mode": "id"
+        },
+        "sendTo": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "={{ $json.alertChannelId }}",
+          "mode": "id"
+        },
+        "content": "=Workflow en échec : {{ $('Error Trigger').first().json.workflow.name }}\nÉtape : {{ $('Error Trigger').first().json.execution?.lastNodeExecuted ?? 'déclencheur' }}\nErreur : {{ String($('Error Trigger').first().json.execution?.error?.message ?? $('Error Trigger').first().json.trigger?.error?.message ?? 'inconnue').slice(0, 1500) }}\n{{ $('Error Trigger').first().json.execution?.url ?? '' }}",
+        "options": {}
+      },
+      "id": "ef092be4-2249-45e1-82db-e1bb9b2ecd23",
+      "name": "Post alert",
+      "type": "n8n-nodes-base.discord",
+      "typeVersion": 2,
+      "position": [
+        440,
+        100
+      ]
+    }
+  ],
+  "connections": {
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Post alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Paris"
+  },
+  "pinData": {},
+  "active": false,
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": []
+}

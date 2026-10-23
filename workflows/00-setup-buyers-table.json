@@ -1,0 +1,70 @@
+{
+  "name": "Setup: create the buyers table",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Setup: create the buyers table\nRun this once before publishing the other workflows.\n\n### How it works\nCreates the `buyers` table and an index for the daily reminder. The SQL uses `IF NOT EXISTS`, so running it again is safe.\n\n### Setup\n1. Create a **Postgres** credential that points to the `onboarding` database.\n2. Select it in **Create buyers table**.\n3. Click **Execute workflow**.",
+        "height": 320,
+        "width": 360,
+        "color": 1
+      },
+      "id": "0cdcc3c0-1fe6-4d90-8c05-124fc212a9f7",
+      "name": "Overview",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -420,
+        -80
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "659a87d1-560b-42ec-8888-c1eff90e1984",
+      "name": "Run once",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Run against the \"onboarding\" database as the \"onboarding\" role.\nCREATE TABLE IF NOT EXISTS buyers (\n  id                          bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,\n  stripe_payment_intent_id    text NOT NULL UNIQUE,\n  stripe_checkout_session_id  text,\n  stripe_event_id             text NOT NULL,\n  product_slug                text NOT NULL,\n  email                       text NOT NULL,\n  name                        text,\n  amount_cents                integer NOT NULL,\n  currency                    text NOT NULL,\n  status                      text NOT NULL DEFAULT 'paid'\n                              CHECK (status IN ('paid', 'refunded', 'disputed')),\n  -- Only a SHA-256 of the claim token is stored; the plain token exists only in the email.\n  claim_token_hash            text UNIQUE,\n  discord_user_id             text,\n  discord_username            text,\n  claimed_at                  timestamptz,\n  role_removed_at             timestamptz,\n  reminder_sent_at            timestamptz,\n  created_at                  timestamptz NOT NULL DEFAULT now(),\n  updated_at                  timestamptz NOT NULL DEFAULT now()\n);\n\nCREATE INDEX IF NOT EXISTS buyers_unclaimed_idx\n  ON buyers (created_at)\n  WHERE claimed_at IS NULL AND status = 'paid';",
+        "options": {}
+      },
+      "id": "3c73ddfa-6ac2-406f-8994-4ab4abcc4332",
+      "name": "Create buyers table",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        220,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "Run once": {
+      "main": [
+        [
+          {
+            "node": "Create buyers table",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Paris"
+  },
+  "pinData": {},
+  "active": false,
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": []
+}

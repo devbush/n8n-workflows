@@ -1,0 +1,304 @@
+{
+  "name": "Remind buyers to claim Discord access after 48 hours",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Remind buyers to claim Discord access\nSends one reminder to buyers who haven't claimed their Discord role 48 hours after buying.\n\n### How it works\n1. Runs every day at 10:00 (Europe/Paris).\n2. One SQL statement picks unclaimed buyers, rotates their claim token (the old link stops working) and marks the reminder as sent, so nobody gets two reminders even if two runs overlap (`FOR UPDATE SKIP LOCKED`).\n3. Resend sends the new link, at most 5 emails per second, with an idempotency key per buyer.\n\n### Setup\n- Credentials: Postgres, Resend as Header Auth.\n- Fill in **Config**.\n- Set **Error alerts** as the error workflow.",
+        "height": 520,
+        "width": 460,
+        "color": 1
+      },
+      "id": "a30ecad3-7eb0-422a-87ed-05c212d4e386",
+      "name": "Overview",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -560,
+        -120
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "days",
+              "triggerAtHour": 10,
+              "triggerAtMinute": 0
+            }
+          ]
+        }
+      },
+      "id": "966564bb-4f21-432d-811c-b48209948f41",
+      "name": "Every day at 10:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        0,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "571f77ba-6e87-4303-8cc3-87456c0b4249",
+              "name": "productName",
+              "value": "Guide AI MVP",
+              "type": "string"
+            },
+            {
+              "id": "30d047cf-1e6c-45c8-829d-81cda1c1019c",
+              "name": "claimUrl",
+              "value": "https://n8n.laforet.dev/webhook/supporter/claim",
+              "type": "string"
+            },
+            {
+              "id": "7604a327-5329-47a0-8370-f8144a8adb1b",
+              "name": "fromEmail",
+              "value": "Nicolas Laforet <noreply@send.laforet.dev>",
+              "type": "string"
+            },
+            {
+              "id": "d028dbb8-a467-4cf9-813a-75392a6da20a",
+              "name": "replyTo",
+              "value": "REPLACE_WITH_YOUR_REPLY_TO_EMAIL",
+              "type": "string"
+            },
+            {
+              "id": "0aacfb74-a5e4-4ac3-8a6f-50d76509c13c",
+              "name": "senderName",
+              "value": "Nicolas",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": false,
+        "options": {}
+      },
+      "id": "81e30817-f039-4d0f-8375-7819f8d25f09",
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        220,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH due AS MATERIALIZED (\n  SELECT id, replace(gen_random_uuid()::text || gen_random_uuid()::text, '-', '') AS token\n  FROM buyers\n  WHERE status = 'paid' AND claimed_at IS NULL AND reminder_sent_at IS NULL\n    AND created_at < now() - interval '48 hours'\n  FOR UPDATE SKIP LOCKED\n)\nUPDATE buyers b\nSET claim_token_hash = encode(sha256(convert_to(due.token, 'UTF8')), 'hex'),\n    reminder_sent_at = now(), updated_at = now()\nFROM due\nWHERE b.id = due.id\nRETURNING b.id, b.email, b.name, b.stripe_payment_intent_id, due.token AS claim_token;",
+        "options": {}
+      },
+      "id": "be53484e-3e85-44a3-8f3f-79016567ba87",
+      "name": "Pick buyers and rotate links",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        440,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 4
+          },
+          "conditions": [
+            {
+              "id": "a768d63e-976e-4017-8824-24b9ebb68235",
+              "leftValue": "={{ !!$json.claim_token }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": false,
+        "options": {}
+      },
+      "id": "37178923-d4fc-464d-820f-4d0f1785763d",
+      "name": "Anyone to remind?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.4,
+      "position": [
+        660,
+        160
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "a58fe8cd-6e13-453c-8ba2-f6f21b076b98",
+      "name": "Nobody today",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        880,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "11d2a996-ed01-47b6-8848-0ec40b6ee0c0",
+              "name": "subject",
+              "value": "Ton accès Supporter t'attend sur Discord",
+              "type": "string"
+            },
+            {
+              "id": "9489a675-4497-4706-8922-5fda8b378312",
+              "name": "html",
+              "value": "=<div style=\"font-family:system-ui,-apple-system,Segoe UI,sans-serif;max-width:520px;margin:0 auto;padding:24px;color:#111;line-height:1.6\"><p>{{ $json.name ? 'Salut ' + $json.name.trim().split(/\\s+/)[0].replace(/[^\\p{L}\\p{M}'-]/gu, '') + ',' : 'Salut,' }}</p><p>Petit rappel : ton achat du <strong>{{ $('Config').first().json.productName }}</strong> te donne le rôle <strong>Supporter</strong> sur mon Discord, et tu ne l'as pas encore activé.</p><p style=\"margin:28px 0\"><a href=\"{{ $('Config').first().json.claimUrl }}?t={{ $json.claim_token }}\" style=\"background:#10b981;color:#fff;padding:12px 20px;border-radius:8px;text-decoration:none;font-weight:600\">Activer mon accès</a></p><p style=\"color:#555;font-size:14px\">Ce nouveau lien remplace celui du premier email.</p><p>Une question ? Réponds simplement à cet email.</p><p>{{ $('Config').first().json.senderName }}</p></div>",
+              "type": "string"
+            },
+            {
+              "id": "7675db94-76d2-4c98-8768-47809c4c3ffd",
+              "name": "text",
+              "value": "={{ $json.name ? 'Salut ' + $json.name.trim().split(/\\s+/)[0].replace(/[^\\p{L}\\p{M}'-]/gu, '') + ',' : 'Salut,' }}\n\nPetit rappel : ton achat du {{ $('Config').first().json.productName }} te donne le rôle Supporter sur mon Discord, et tu ne l'as pas encore activé.\n\nActiver mon accès : {{ $('Config').first().json.claimUrl }}?t={{ $json.claim_token }}\n\nCe nouveau lien remplace celui du premier email.\n\nUne question ? Réponds simplement à cet email.\n\n{{ $('Config').first().json.senderName }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "77facb1b-b404-41a4-8f16-1a151438b8fc",
+      "name": "Build reminder email",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        880,
+        140
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.resend.com/emails",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Idempotency-Key",
+              "value": "=reminder/{{ $json.stripe_payment_intent_id }}"
+            },
+            {
+              "name": "User-Agent",
+              "value": "laforet-n8n-onboarding/1.0"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ from: $('Config').first().json.fromEmail, to: [$json.email], reply_to: $('Config').first().json.replyTo, subject: $json.subject, html: $json.html, text: $json.text, tags: [{ name: 'flow', value: 'supporter_reminder' }] }) }}",
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 5,
+              "batchInterval": 1000
+            }
+          }
+        }
+      },
+      "id": "d0562deb-0405-4c7c-8961-ede3f13eef44",
+      "name": "Send reminder email",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        1100,
+        140
+      ]
+    }
+  ],
+  "connections": {
+    "Every day at 10:00": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Pick buyers and rotate links",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pick buyers and rotate links": {
+      "main": [
+        [
+          {
+            "node": "Anyone to remind?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Anyone to remind?": {
+      "main": [
+        [
+          {
+            "node": "Build reminder email",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Nobody today",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build reminder email": {
+      "main": [
+        [
+          {
+            "node": "Send reminder email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Paris"
+  },
+  "pinData": {},
+  "active": false,
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": []
+}
