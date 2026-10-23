@@ -4,7 +4,7 @@
     {
       "parameters": {
         "content": "## Setup: create the buyers table\nRun this once before publishing the other workflows.\n\n### How it works\nCreates the `buyers` table and an index for the daily reminder. The SQL uses `IF NOT EXISTS`, so running it again is safe.\n\n### Setup\n1. Create a **Postgres** credential that points to the `onboarding` database.\n2. Select it in **Create buyers table**.\n3. Click **Execute workflow**.",
-        "height": 320,
+        "height": 400,
         "width": 360,
         "color": 1
       },
