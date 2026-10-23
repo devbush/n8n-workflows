@@ -62,8 +62,9 @@ Environment variables: `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`, `N8N
 
 1. Create an application at <https://discord.com/developers/applications>.
 2. **OAuth2**: add the redirect `https://<your n8n host>/webhook/supporter/callback`. Note the client ID and secret.
-3. **Bot**: copy the token. Invite it with Create Invite + Manage Roles:
-   `https://discord.com/oauth2/authorize?client_id=<CLIENT_ID>&scope=bot&permissions=268435457`
+3. **Bot**: turn off "Public Bot" and copy the token. Invite it with Create Invite, View Channels, Send Messages and Manage Roles:
+   `https://discord.com/oauth2/authorize?client_id=<CLIENT_ID>&scope=bot&permissions=268438529`
+   Give the bot access to your private alerts channel.
 4. In **Server Settings > Roles**, drag the bot's role above the Supporter role.
 
 ### 3. n8n credentials
